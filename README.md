@@ -32,18 +32,30 @@ your-project/
 ## Setup
 
 1. Copy `lib/logger.sh` and `conf/logger.conf` into your project following the structure above.
-2. In your script, set `SCRIPT_DIR` and source the library:
+
+2. At the top of your script, declare the two required variables **before** sourcing the library:
 
 ```bash
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly START_TIME=$(date +%s%3N)
+```
+
+- `SCRIPT_DIR` — absolute path to your script's directory. The library uses this to locate `conf/logger.conf` and the `logs/` directory.
+- `START_TIME` — epoch timestamp in milliseconds. The library uses this to calculate script duration in the footer. Must use `date +%s%3N`.
+
+3. Source the library:
+
+```bash
 source "$SCRIPT_DIR/lib/logger.sh"
 ```
 
-3. Initialize the logger before any `log` calls:
+4. Initialize the logger before any `log` calls:
 
 ```bash
 logger_init
 ```
+
+`logger_init` creates the log file, runs archiving, and registers a trap to automatically write the footer when the script exits. You do not need to call `log_footer` manually.
 
 ---
 
@@ -76,6 +88,8 @@ log INFO  "Service started on port 8080"
 log WARN  "Disk usage above 80%"
 log ERROR "Failed to connect to database"
 ```
+
+Log level input is case-insensitive — `log info "message"` and `log INFO "message"` both work.
 
 Log level filtering is controlled by `MIN_LOG_LEVEL`. For example, setting it to `WARN` will suppress `DEBUG` and `INFO` messages.
 
