@@ -4,19 +4,18 @@
 # ----------------------------------------------------
 # Authour: Pavara Mirihagalla
 # ====================================================
-
-# ====================================================
-# PULL CONFIG
-# ----------------------------------------------------
-source ./logger.conf
-# ====================================================
-
 # ====================================================
 # INITIAL VARIABLES
 # ----------------------------------------------------
 readonly TIMESTAMP=$(date '+%Y-%m-%d')
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly logfile="$SCRIPT_DIR/logs/$softname"_"$TIMESTAMP.log"
+# ====================================================
+
+
+# ====================================================
+# PULL CONFIG
+# ----------------------------------------------------
+source ./logger.conf
 # ====================================================
 
 
@@ -62,34 +61,47 @@ fi
 # ====================================================
 
 # ====================================================
+# PARSE LOG LEVEL
+# ----------------------------------------------------
+log_level() {
+        case "$1" in
+        INFO|info|i)
+        levelsort="INFO"
+        olor=$GREEN
+        ;;
+        WARN|warn|w)
+        levelsort="WARN"
+        color=$RED
+        ;;
+        ERROR|error|e)
+        levelsort="ERROR"
+        color=$RED
+        ;;
+        DEBUG|debug|d)
+        levelsort="DEBUG"
+        color=$BLUE
+        ;;
+
+        *)
+        levelsort="OTHER"
+        color=$NC
+        ;;
+    esac
+
+}
+# ====================================================
 # LOGGING FUNCTION
 # ----------------------------------------------------
 log() {
     local level=$1
     shift
+    log_level "$level"
+    local levelline="${color}$levelsort${NC}"
+    local line="$(date +%Y-%m-%d' '%H:%M:%S) [$levelline] $*"
+    local line_nc="$(date +%Y-%m-%d' '%H:%M:%S) [$level] $*"
 
-    case "$level" in
-        INFO|info)
-        levelsort="INFO"
-        ;;
-        WARN|warn)
-        levelsort="WARN"
-        ;;
-        ERROR|error)
-        levelsort="ERROR"
-        ;;
-        DEBUG|debug)
-        levelsort="DEBUG"
-        ;;
-
-        *) level="INFO" ;;
-    esac
-
-
-
-    local line="$(date +%Y-%m-%d' '%H:%M:%S) [$levelsort] $*"
-    
-    # Uncomment next line for console output
-    #echo "$line"
-    echo "$line" >> "$logfile"
+    if [ "$show_log_inconsole" = true ]; then
+    echo "$line"
+    fi
+    echo "$line_nc" >> "$logfile"
 }
