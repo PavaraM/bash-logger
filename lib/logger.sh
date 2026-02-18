@@ -6,16 +6,9 @@
 # ====================================================
 
 # ====================================================
-# INITIAL VARIABLES
-# ----------------------------------------------------
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# ====================================================
-
-
-# ====================================================
 # PULL CONFIG
 # ----------------------------------------------------
-source "$SCRIPT_DIR/logger.conf"
+source "$SCRIPT_DIR/conf/logger.conf"
 # ====================================================
 
 # ====================================================
@@ -24,13 +17,6 @@ if [[ -n "${SUDO_USER:-}" ]]; then
     chown -R "$SUDO_USER:$SUDO_USER" "$SCRIPT_DIR/logs/"
 fi
 # =====================================================
-
-# ====================================================
-# DIRECTORY CREATION
-# ----------------------------------------------------
-mkdir -p "$SCRIPT_DIR/logs/"
-mkdir -p "$SCRIPT_DIR/logs/archive/"
-# ====================================================
 
 # ====================================================
 # ARCHIVE LOGS
@@ -49,7 +35,7 @@ if [[ "$AUTO_ARCHIVE" == "true" ]]; then
 # ----------------------------------------------------
 logger_init() {
     TIMESTAMP=$(date '+%Y-%m-%d')
-    logfile="$LOG_DIR/${softname}_${TIMESTAMP}.log"
+    logfile="$LOG_DIR/${softname}_${environment}_${TIMESTAMP}.log"
 
     mkdir -p "$LOG_DIR"
     mkdir -p "$ARCHIVE_DIR"
@@ -69,15 +55,17 @@ logger_init() {
         } >> "$logfile"
     fi
 
+    # SET OWNERSHIP OF NEW LOG FILE TO INVOKING USER IF RUNNING WITH SUDO
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        chown "$SUDO_USER:$SUDO_USER" "$logfile"
+    fi
+
     trap log_footer EXIT
 }
 # ====================================================
 
 # ====================================================
-# SET OWNERSHIP OF NEW LOG FILE TO INVOKING USER IF RUNNING WITH SUDO
-if [[ -n "${SUDO_USER:-}" ]]; then
-    chown "$SUDO_USER:$SUDO_USER" "$logfile"
-fi
+
 # ====================================================
 
 # ====================================================
