@@ -107,7 +107,7 @@ log() {
     local line_nc="$(date +%Y-%m-%d' '%H:%M:%S) [$levelsort] $*"
 
     if [[ "$show_log_inconsole" == "true" ]]; then
-        echo -e "$line"
+        printf "%b\n" "$line"
     fi
     echo "$line_nc" >> "$logfile"
 }
