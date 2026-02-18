@@ -8,7 +8,6 @@
 # ====================================================
 # INITIAL VARIABLES
 # ----------------------------------------------------
-readonly TIMESTAMP=$(date '+%Y-%m-%d')
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ====================================================
 
@@ -36,25 +35,41 @@ mkdir -p "$SCRIPT_DIR/logs/archive/"
 # ====================================================
 # ARCHIVE LOGS
 # ----------------------------------------------------
-find "$SCRIPT_DIR/logs/" -type f -name "devbox_*.log" -mtime +7 -exec mv {} "$SCRIPT_DIR/logs/archive/" \;
+log_archive() {   
+if [[ "$AUTO_ARCHIVE" == "true" ]]; then
+        find "$LOG_DIR" -type f -name "${softname}_*.log" \
+            -mtime +"$LOG_RETENTION_DAYS" \
+            -exec mv {} "$ARCHIVE_DIR/" \;
+    fi
+}
 # ====================================================
 
 # ====================================================
 # INITIALIZE LOG FILE
 # ----------------------------------------------------
 logger_init() {
-touch "$logfile"
-echo " " >> "$logfile"
-echo "script started at $(date)" >> "$logfile"
-echo "command: $softname $@" >> "$logfile"
-echo "system: $(uname -a)" >> "$logfile"
-echo "shell: $SHELL" >> "$logfile"
-echo "SCRIPT_DIR: $SCRIPT_DIR" >> "$logfile"
-echo "user: $USER (SUDO_USER: ${SUDO_USER:-none})" >> "$logfile"
-echo "------------------------------" >> "$logfile"
-echo " " >> "$logfile"
+    TIMESTAMP=$(date '+%Y-%m-%d')
+    logfile="$LOG_DIR/${softname}_${TIMESTAMP}.log"
 
-trap log_footer EXIT
+    mkdir -p "$LOG_DIR"
+    mkdir -p "$ARCHIVE_DIR"
+
+    log_archive
+
+    touch "$logfile"
+
+    if [[ "$SHOW_FILE" == "true" ]]; then
+        {
+            echo ""
+            echo "Script started at $(date)"
+            echo "Environment: $environment"
+            echo "User: $USER (SUDO_USER: ${SUDO_USER:-none})"
+            echo "------------------------------"
+            echo ""
+        } >> "$logfile"
+    fi
+
+    trap log_footer EXIT
 }
 # ====================================================
 
@@ -66,66 +81,92 @@ fi
 # ====================================================
 
 # ====================================================
-# PARSE LOG LEVEL
+# LOG LEVEL MAPPING FUNCTION
 # ----------------------------------------------------
-log_level() {
-        case "$1" in
-        INFO|info|i)
-        levelsort="INFO"
-        color=$GREEN
-        ;;
-        WARN|warn|w)
-        levelsort="WARN"
-        color=$YELLOW
-        ;;
-        ERROR|error|e)
-        levelsort="ERROR"
-        color=$RED
-        ;;
-        DEBUG|debug|d)
-        levelsort="DEBUG"
-        color=$BLUE
-        ;;
-
-        *)
-        levelsort="OTHER"
-        color=$NC
-        ;;
+_log_level_to_number() {
+    case "$1" in
+        DEBUG) echo 1 ;;
+        INFO)  echo 2 ;;
+        WARN)  echo 3 ;;
+        ERROR) echo 4 ;;
+        *)     echo 0 ;;
     esac
-
 }
+# ====================================================
+
+
 # ====================================================
 # LOGGING FUNCTION
 # ----------------------------------------------------
 log() {
-    local level=$1
+    local level=$(echo "$1" | tr '[:lower:]' '[:upper:]')
     shift
-    log_level "$level"
 
-    local levelline="${color} $levelsort ${NC}"
-    local line="$(date +%Y-%m-%d' '%H:%M:%S) [$levelline] $*"
-    local line_nc="$(date +%Y-%m-%d' '%H:%M:%S) [$levelsort] $*"
+    local level_num=$(_log_level_to_number "$level")
+    local min_level_num=$(_log_level_to_number "$MIN_LOG_LEVEL")
 
-    if [[ "$show_log_inconsole" == "true" ]]; then
-        printf "%b\n" "$line"
+    # Level filtering
+    if (( level_num < min_level_num )); then
+        return
     fi
-    echo "$line_nc" >> "$logfile"
-}
 
+    local timestamp=$(date +"$LOG_DATE_FORMAT")
+
+    # Select color
+    local color=""
+    if [[ "$ENABLE_COLORS" == "true" ]]; then
+        case "$level" in
+            DEBUG) color="$COLOR_DEBUG" ;;
+            INFO)  color="$COLOR_INFO" ;;
+            WARN)  color="$COLOR_WARN" ;;
+            ERROR) color="$COLOR_ERROR" ;;
+        esac
+    fi
+
+    local console_line="$timestamp [${color}${level}${COLOR_RESET}] $*"
+    local file_line="$timestamp [$level] $*"
+
+    # Console output
+    if [[ "$SHOW_CONSOLE" == "true" ]]; then
+        if [[ "$ENABLE_COLORS" == "true" ]]; then
+            printf "%b\n" "$console_line"
+        else
+            echo "$file_line"
+        fi
+    fi
+
+    # File output
+    if [[ "$SHOW_FILE" == "true" ]]; then
+        echo "$file_line" >> "$logfile"
+    fi
+}
+# ====================================================
+
+
+# ====================================================
+# LOG FOOTER FUNCTION TO LOG SCRIPT END TIME, DURATION, EXIT CODE, AND DEBUG
+# ----------------------------------------------------
 log_footer() {
     local exit_code=$?
-    END_TIME=$(date +%s%3N)
-    DEBUGGING_GUIDE="$SCRIPT_DIR/docs/DEBUGGING.md"
-    duration_ms=$((END_TIME - START_TIME))
-    duration_s=$(awk "BEGIN {printf \"%.3f\", $duration_ms/1000}")
-    echo "------------------------------" >> "$logfile"
-    echo "Script ended at $(date) exit_code=$exit_code duration=${duration_s}s" >> "$logfile"
-    echo "Check debugging guide: $DEBUGGING_GUIDE" >> "$logfile"
-    echo "==============================" >> "$logfile"
-    echo " " >> "$logfile"
+    local END_TIME=$(date +%s%3N)
+    local duration_ms=$((END_TIME - START_TIME))
+    local duration_s=$(awk "BEGIN {printf \"%.3f\", $duration_ms/1000}")
 
-    # Fix ownership one final time (in case any logs were created as root)
-    if [[ -n "${SUDO_USER:-}" ]]; then
-        chown -R "$SUDO_USER:$SUDO_USER" "$SCRIPT_DIR/logs/"
+    if [[ "$SHOW_FILE" == "true" ]]; then
+        {
+            echo ""
+            echo "------------------------------"
+            echo "Script ended at $(date)"
+            echo "Exit code: $exit_code"
+            echo "Duration: ${duration_s}s"
+            echo "=============================="
+            echo ""
+        } >> "$logfile"
+    fi
+
+    # Fix ownership if sudo
+    if [[ -n "${SUDO_USER:-}" && "$AUTO_CHOWN" == "true" ]]; then
+        chown -R "$SUDO_USER:$SUDO_USER" "$LOG_DIR" 2>/dev/null
     fi
 }
+# ====================================================
